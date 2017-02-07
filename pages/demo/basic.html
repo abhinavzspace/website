@@ -4,6 +4,50 @@
 
 <h2>Editing with ProseMirror</h2>
 
+
+<style>
+  /* FROM TRACKING SETUP */
+  .commit {
+    margin-bottom: 4px;
+  }
+  .commit:hover {
+    background: #ff8;
+  }
+  .commit-revert {
+    color: #a22;
+  }
+  .commit-time {
+    background: #5ab;
+    padding: 0 5px;
+    color: white;
+    font-size: 90%;
+  }
+  .commit-blame {
+    background: #ff8;
+  }
+  .blame-info {
+    position: fixed;
+    border: 1px solid silver;
+    background: white;
+    padding: 3px 8px;
+    z-index: 3;
+  }
+  .blame-wrap {
+    position: absolute;
+    right: 0;
+    top: 0;
+  }
+  #commit {
+    margin: 6px 0;
+    position: relative;
+  }
+  .blame-marker {
+    background: #ff8;
+  }
+</style>
+
+
+
 <p>You can set up a basic ProseMirror editor something like this:</p>
 
 <pre>
@@ -55,6 +99,15 @@ is <a href="https://github.com/ProseMirror/website/blob/master/src/demo/basic.js
   and poke at the <code>pm</code> object to see what you can get it to
   do.</p>
 </div>
+
+
+<!--FROM TRACK SETUP-->
+<form id="commit">
+  Commit message: <input type=text id=message name=message> <button id=commitbutton type="submit">commit</button>
+  <div class=blame-wrap><button type=button id=blame>blame at cursor</button></div>
+</form>
+<div id="commits"></div>
+
 
 <script src="bundle_basic.js"></script>
 

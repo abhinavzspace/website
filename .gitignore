@@ -4,3 +4,6 @@
 .tern-port
 /src/demo/collab/demo-instances.json
 /CHANGELOG.md
+
+.idea
+.DS_Store

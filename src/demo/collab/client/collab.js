@@ -12,6 +12,9 @@ const {GET, POST} = require("./http")
 const {Reporter} = require("./reporter")
 const {commentPlugin, commentUI, addAnnotation, annotationIcon} = require("./comment")
 
+const {Mapping} = require("prosemirror-transform")
+const {trackPlugin, highlightPlugin} = require('./track')
+
 const report = new Reporter()
 
 function badVersion(err) {
@@ -47,6 +50,8 @@ class EditorConnection {
         plugins: exampleSetup({schema, history: false}).concat([
           history({preserveItems: true}),
           collab({version: action.version}),
+          trackPlugin,
+          highlightPlugin,
           commentPlugin,
           commentUI({dispatch: transaction => this.dispatch({type: "transaction", transaction}),
                      getState: () => this.state.edit})
@@ -106,6 +111,10 @@ class EditorConnection {
       this.view = null
       window.view = undefined
     }
+
+
+    // TRACKING CODE - BY Abhinav 7feb2017
+      this.renderCommits(this.state.edit, this.dispatch)
   }
 
   // Load the document from the server and start up
@@ -119,6 +128,45 @@ class EditorConnection {
                      version: data.version,
                      users: data.users,
                      comments: {version: data.commentVersion, comments: data.comments}})
+
+
+
+        // BEGIN: TRACKING CODE - BY Abhinav 7feb2017
+        const tr = this.state.edit.tr.insertText("Type something, and then commit it.")
+        this.dispatch({type: "transaction", transaction: tr})
+        const tr1 = this.state.edit.tr.setMeta(trackPlugin, "Initial commit")
+        this.dispatch({type: "transaction", transaction: tr1})
+
+        document.querySelector("#commit").addEventListener("submit", e => {
+            e.preventDefault()
+            this.doCommit(e.target.elements.message.value || "Unnamed")
+            e.target.elements.message.value = ""
+            // connection.view.editor.focus()
+        })
+
+        function findInBlameMap(pos, state) {
+            let map = trackPlugin.getState(state).blameMap
+            for (let i = 0; i < map.length; i++)
+                if (map[i].to >= pos && map[i].commit != null)
+                    return map[i].commit
+        }
+
+        document.querySelector("#blame").addEventListener("mousedown", e => {
+            e.preventDefault()
+            let pos = e.target.getBoundingClientRect()
+            let commitID = findInBlameMap(this.state.edit.selection.head, connection.state.edit)
+            let commit = commitID != null && trackPlugin.getState(this.state.edit).commits[commitID]
+            let node = crel("div", {class: "blame-info"},
+                commitID != null ? ["It was: ", crel("strong", null, commit ? commit.message : "Uncommitted")]
+                    : "No commit found")
+            node.style.right = (document.body.clientWidth - pos.right) + "px"
+            node.style.top = (pos.bottom + 2) + "px"
+            document.body.appendChild(node)
+            setTimeout(() => document.body.removeChild(node), 2000)
+        })
+        // END: TRACKING CODE - BY Abhinav 7feb2017
+
+
     }, err => {
       this.report.failure(err)
     })
@@ -217,6 +265,69 @@ class EditorConnection {
       window.view = undefined
     }
   }
+
+
+
+    // BEGIN: TRACKING CODE - BY Abhinav 7feb2017
+    revertCommit(commit) {
+        let tState = trackPlugin.getState(this.state.edit)
+        let found = tState.commits.indexOf(commit)
+        if (found == -1) return
+
+        if (tState.uncommittedSteps.length) return alert("Commit your changes first!")
+
+        let remap = new Mapping(tState.commits.slice(found).reduce((maps, c) => maps.concat(c.maps), []))
+        let tr = this.state.edit.tr
+        for (let i = commit.steps.length - 1; i >= 0; i--) {
+            let remapped = commit.steps[i].map(remap.slice(i + 1))
+            let result = remapped && tr.maybeStep(remapped)
+            if (result && result.doc) remap.appendMap(remapped.getMap(), i)
+        }
+        if (tr.docChanged) {
+            const trans = tr.setMeta(trackPlugin, `Revert '${commit.message}'`)
+            this.dispatch({type: "transaction", transaction: trans})
+        }
+    }
+
+    renderCommits(state, dispatch) {
+        let curState = trackPlugin.getState(state)
+        if (lastRendered == curState) return
+        lastRendered = curState
+
+        let out = document.querySelector("#commits")
+        out.textContent = ""
+        let commits = curState.commits
+        commits.forEach(commit => {
+            let node = crel("div", {class: "commit"},
+                crel("span", {class: "commit-time"},
+                    commit.time.getHours() + ":" + (commit.time.getMinutes() < 10 ? "0" : "")
+                    + commit.time.getMinutes()),
+                "\u00a0 " + commit.message + "\u00a0 ",
+                crel("button", {class: "commit-revert"}, "revert"))
+            node.lastChild.addEventListener("click", () => this.revertCommit(commit))
+            node.addEventListener("mouseover", e => {
+                if (!node.contains(e.relatedTarget)) {
+                    const tr = state.tr.setMeta(highlightPlugin, {add: commit})
+                    this.dispatch({type: "transaction", transaction: tr})
+                }
+            })
+            node.addEventListener("mouseout", e => {
+                if (!node.contains(e.relatedTarget)) {
+                    const tr = state.tr.setMeta(highlightPlugin, {clear: commit})
+                    this.dispatch({type: "transaction", transaction: tr})
+                }
+            })
+            out.appendChild(node)
+        })
+    }
+
+    doCommit(message) {
+        const tr = this.state.edit.tr.setMeta(trackPlugin, message)
+        this.dispatch({type: "transaction", transaction: tr})
+    }
+    // END: TRACKING CODE - BY Abhinav 7feb2017
+
+
 }
 
 function repeat(val, n) {
@@ -303,3 +414,118 @@ function connectFromHash() {
 
 addEventListener("hashchange", connectFromHash)
 connectFromHash() || (location.hash = "#edit-Example")
+
+
+
+
+
+
+// TRACK SETUP
+
+// let state = EditorState.create({
+//   schema,
+//   plugins: exampleSetup({schema}).concat(trackPlugin, highlightPlugin)
+// }), view
+
+let lastRendered = null
+
+// function dispatch(tr) {
+//   // state = connection.state.edit.apply(tr)
+//   // connection.view.updateState(connection.state.edit)
+//   // setDisabled(connection.state.edit)
+//   // renderCommits(connection.state.edit, dispatch)
+// }
+
+// view = new MenuBarEditorView(document.querySelector("#editor"), {state, dispatchTransaction: dispatch})
+// window.view = view.editor
+
+// setTimeout(() => {
+//   connection.dispatch(connection.state.edit.tr.insertText("Type something, and then commit it."))
+//     connection.dispatch(connection.state.edit.tr.setMeta(trackPlugin, "Initial commit"))
+// }, 50)
+
+
+function setDisabled(state) {
+  let input = document.querySelector("#message")
+  let button = document.querySelector("#commitbutton")
+  input.disabled = button.disabled = trackPlugin.getState(state).uncommittedSteps.length == 0
+}
+
+// function doCommit(message) {
+//     connection.dispatch(connection.state.edit.tr.setMeta(trackPlugin, message))
+// }
+
+// function renderCommits(state, dispatch) {
+//   let curState = trackPlugin.getState(state)
+//   if (lastRendered == curState) return
+//   lastRendered = curState
+//
+//   let out = document.querySelector("#commits")
+//   out.textContent = ""
+//   let commits = curState.commits
+//   commits.forEach(commit => {
+//     let node = crel("div", {class: "commit"},
+//         crel("span", {class: "commit-time"},
+//             commit.time.getHours() + ":" + (commit.time.getMinutes() < 10 ? "0" : "")
+//             + commit.time.getMinutes()),
+//         "\u00a0 " + commit.message + "\u00a0 ",
+//         crel("button", {class: "commit-revert"}, "revert"))
+//     node.lastChild.addEventListener("click", () => revertCommit(commit))
+//     node.addEventListener("mouseover", e => {
+//       if (!node.contains(e.relatedTarget))
+//         dispatch(state.tr.setMeta(highlightPlugin, {add: commit}))
+//     })
+//     node.addEventListener("mouseout", e => {
+//       if (!node.contains(e.relatedTarget))
+//         dispatch(state.tr.setMeta(highlightPlugin, {clear: commit}))
+//     })
+//     out.appendChild(node)
+//   })
+// }
+
+// function revertCommit(commit) {
+//   let tState = trackPlugin.getState(connection.state.edit)
+//   let found = tState.commits.indexOf(commit)
+//   if (found == -1) return
+//
+//   if (tState.uncommittedSteps.length) return alert("Commit your changes first!")
+//
+//   let remap = new Mapping(tState.commits.slice(found).reduce((maps, c) => maps.concat(c.maps), []))
+//   let tr = state.tr
+//   for (let i = commit.steps.length - 1; i >= 0; i--) {
+//     let remapped = commit.steps[i].map(remap.slice(i + 1))
+//     let result = remapped && tr.maybeStep(remapped)
+//     if (result && result.doc) remap.appendMap(remapped.getMap(), i)
+//   }
+//   if (tr.docChanged) {
+//       connection.dispatch(tr.setMeta(trackPlugin, `Revert '${commit.message}'`))
+//   }
+// }
+
+// document.querySelector("#commit").addEventListener("submit", e => {
+//   e.preventDefault()
+//   doCommit(e.target.elements.message.value || "Unnamed")
+//   e.target.elements.message.value = ""
+//   // connection.view.editor.focus()
+// })
+//
+// function findInBlameMap(pos, state) {
+//   let map = trackPlugin.getState(state).blameMap
+//   for (let i = 0; i < map.length; i++)
+//     if (map[i].to >= pos && map[i].commit != null)
+//       return map[i].commit
+// }
+//
+// document.querySelector("#blame").addEventListener("mousedown", e => {
+//   e.preventDefault()
+//   let pos = e.target.getBoundingClientRect()
+//   let commitID = findInBlameMap(connection.state.edit.selection.head, connection.state.edit)
+//   let commit = commitID != null && trackPlugin.getState(connection.state.edit).commits[commitID]
+//   let node = crel("div", {class: "blame-info"},
+//       commitID != null ? ["It was: ", crel("strong", null, commit ? commit.message : "Uncommitted")]
+//           : "No commit found")
+//   node.style.right = (document.body.clientWidth - pos.right) + "px"
+//   node.style.top = (pos.bottom + 2) + "px"
+//   document.body.appendChild(node)
+//   setTimeout(() => document.body.removeChild(node), 2000)
+// })

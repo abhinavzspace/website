@@ -132,6 +132,47 @@ li.commentText + li.commentText {
   background: rgb(255, 255, 200);
   border-color: rgb(200, 200, 120);
 }
+
+
+
+/* FROM TRACKING SETUP */
+.commit {
+    margin-bottom: 4px;
+}
+.commit:hover {
+    background: #ff8;
+}
+.commit-revert {
+    color: #a22;
+}
+.commit-time {
+    background: #5ab;
+    padding: 0 5px;
+    color: white;
+    font-size: 90%;
+}
+.commit-blame {
+    background: #ff8;
+}
+.blame-info {
+    position: fixed;
+    border: 1px solid silver;
+    background: white;
+    padding: 3px 8px;
+    z-index: 3;
+}
+.blame-wrap {
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+#commit {
+    margin: 6px 0;
+    position: relative;
+}
+.blame-marker {
+    background: #ff8;
+}
 </style>
 
 <p>The editor below talks to a simple server-side service to allow
@@ -162,6 +203,15 @@ Try not to be such a person.</p>
     <button type=button id="changedoc">Change</button>
   </span>
 </div>
+
+
+<!--FROM TRACK SETUP-->
+<form id="commit">
+    Commit message: <input type=text id=message name=message> <button id=commitbutton type="submit">commit</button>
+    <div class=blame-wrap><button type=button id=blame>blame at cursor</button></div>
+</form>
+<div id="commits"></div>
+
 
 <p>Next demo: <a href="basic.html">basic use</a>.</p>
 
